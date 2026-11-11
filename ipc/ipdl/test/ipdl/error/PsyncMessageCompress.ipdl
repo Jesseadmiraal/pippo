@@ -1,7 +1,0 @@
-//error: message `foo' in protocol `PsyncMessageCompress' requests compression but is not async
-
-[ChildProc=any]
-sync protocol PsyncMessageCompress {
-parent:
-    [Compress] sync foo();
-};

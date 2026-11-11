@@ -1,7 +1,0 @@
-{
-  "name": "pnpm-audit-vulnerable",
-  "private": true,
-  "dependencies": {
-    "fast-uri": "3.1.4"
-  }
-}

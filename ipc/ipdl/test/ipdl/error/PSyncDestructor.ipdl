@@ -1,7 +1,0 @@
-//error: destructor must be async
-
-[ChildProc=any]
-protocol PSyncDestructor {
-child:
-    sync __delete__();
-};

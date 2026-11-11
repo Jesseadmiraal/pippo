@@ -1,7 +1,0 @@
-{
-  "name": "pnpm-audit-clean",
-  "private": true,
-  "dependencies": {
-    "isarray": "2.0.5"
-  }
-}

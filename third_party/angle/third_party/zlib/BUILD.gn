@@ -1,5 +1,0 @@
-config("zlib_config") {
-}
-source_set("zlib") {
-    public_configs = [ ":zlib_config" ]
-}

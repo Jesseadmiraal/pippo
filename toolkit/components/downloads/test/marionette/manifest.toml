@@ -1,4 +1,0 @@
-[DEFAULT]
-subsuite = "integration"
-
-["test_delete_private_permanent_pbm.py"]

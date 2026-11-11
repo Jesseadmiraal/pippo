@@ -1,2 +1,0 @@
-EXPORTS += ["header.h"]
-SOURCE_HEADERS += ["header.h"]

@@ -1,7 +1,0 @@
-//error: destructor declaration `__delete__(...)' required for managed protocol `PmanagedNoDtor'
-include protocol PmanagerNoDtor;
-
-protocol PmanagedNoDtor {
-    manager PmanagerNoDtor;
-    // empty
-};

@@ -1,7 +1,0 @@
-[DEFAULT]
-head = "head_forgetaboutsite.js"
-run-if = [
-  "os != 'android'",
-]
-
-["test_removeDataFromDomain.js"]

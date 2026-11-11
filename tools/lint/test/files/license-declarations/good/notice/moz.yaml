@@ -1,9 +1,0 @@
-schema: 1
-
-bugzilla:
-  product: Developer Infrastructure
-  component: Lint and Formatting
-
-origin:
-  name: notice-good
-  license-file: LICENSE

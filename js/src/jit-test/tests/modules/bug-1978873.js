@@ -1,5 +1,0 @@
-gczeal(15)
-enableTrackAllocations()
-gczeal(7, 1)
-a = parseModule(``)
-moduleLoadAndLink(a)

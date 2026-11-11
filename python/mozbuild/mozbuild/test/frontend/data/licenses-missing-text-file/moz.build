@@ -1,3 +1,0 @@
-LICENSES += ["broken"]
-LICENSES["broken"].title = "Broken License"
-LICENSES["broken"].text = "does-not-exist.txt"

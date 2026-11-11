@@ -1,4 +1,0 @@
-# STEPS TO REBUILD THE BUNDLES FOR ALL VERSIONS
-
-1. npm install
-2. npx webpack

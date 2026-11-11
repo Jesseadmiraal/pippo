@@ -1,5 +1,0 @@
-[DEFAULT]
-head = ""
-
-["test_pb_notification_ipc.js"]
-support-files = ["child_pb_notification.js"]

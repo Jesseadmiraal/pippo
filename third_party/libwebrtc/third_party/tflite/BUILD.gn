@@ -1,3 +1,0 @@
-# mozilla shim
-source_set("tflite_standalone") {
-}
