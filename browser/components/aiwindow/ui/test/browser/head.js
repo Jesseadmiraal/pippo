@@ -18,6 +18,7 @@ ChromeUtils.defineESModuleGetters(this, {
   Chat: "moz-src:///browser/components/aiwindow/models/Chat.sys.mjs",
   ChatConversation:
     "moz-src:///browser/components/aiwindow/ui/modules/ChatConversation.sys.mjs",
+  GET_OPEN_TABS: "moz-src:///browser/components/aiwindow/models/Tools.sys.mjs",
   getModelForChoice:
     "moz-src:///browser/components/aiwindow/models/Utils.sys.mjs",
   IntentClassifier:
@@ -28,6 +29,8 @@ ChromeUtils.defineESModuleGetters(this, {
     "moz-src:///browser/components/aiwindow/models/memories/MemoriesConstants.sys.mjs",
   MENTION_TYPE:
     "moz-src:///browser/components/urlbar/SmartbarMentionsPanelSearch.sys.mjs",
+  MESSAGE_ROLE:
+    "moz-src:///browser/components/aiwindow/ui/modules/ChatEnums.sys.mjs",
   openAIEngine: "moz-src:///browser/components/aiwindow/models/Utils.sys.mjs",
   SmartbarMentionsPanelSearch:
     "moz-src:///browser/components/urlbar/SmartbarMentionsPanelSearch.sys.mjs",
@@ -282,6 +285,15 @@ const MOCK_RS_RECORDS = [
   ]);
 
 add_setup(async function () {
+  if (parseInt(Services.env.get("MOZ_CHAOSMODE"), 16)) {
+    // When running chaos mode in --verify test runs, the amount of time
+    // that we spend on animations dramatically increases the time that
+    // tests take to run, to the point that some of the tests time out.
+    await SpecialPowers.pushPrefEnv({
+      set: [["ui.prefersReducedMotion", 1]],
+    });
+  }
+
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.smartwindow.endpoint", "http://localhost:0/v1"],
@@ -928,6 +940,44 @@ async function submitSmartbar(browser, { useButton = false } = {}) {
       EventUtils.synthesizeKey("KEY_Enter", {}, content);
     }
   });
+}
+
+/**
+ * Chat turn that includes a get_open_tabs tool call:
+ * Returns the tool result message.
+ *
+ * @param {object} options
+ * @param {MockEngineManager} options.mockEngineManager
+ * @param {ChatConversation} options.conversation
+ * @param {string} options.callId
+ */
+async function triggerGetOpenTabsToolCall({
+  mockEngineManager,
+  conversation,
+  callId,
+}) {
+  await mockEngineManager.respondTo({
+    purpose: "chat",
+    response: {
+      text: "",
+      tokens: null,
+      isPrompt: false,
+      toolCalls: [
+        {
+          id: callId,
+          function: { name: GET_OPEN_TABS, arguments: "{}" },
+        },
+      ],
+    },
+  });
+
+  return TestUtils.waitForCondition(
+    () =>
+      conversation.messages.find(
+        m => m.role === MESSAGE_ROLE.TOOL && m.content.name === GET_OPEN_TABS
+      ),
+    "A result for get_open_tabs should be returned in the conversation."
+  );
 }
 
 /**

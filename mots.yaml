@@ -8,7 +8,7 @@
 # documentation and how to modify this file.
 repo: mozilla-central
 created_at: '2021-10-14T12:50:40.073465'
-updated_at: '2026-10-29T10:12:06.396239+00:00'
+updated_at: '2026-11-09T04:27:33.756124+00:00'
 export:
   path: ./docs/mots/index.md
   format: md
@@ -865,8 +865,7 @@ people:
     bmo_id: 585815
     name: Micah Tigley
     nick: micah
-  - &mikokm
-    bmo_id: 547538
+  - bmo_id: 547538
     name: Miko Mynttinen
     nick: mikokm
   - &mimi
@@ -1017,6 +1016,10 @@ people:
     bmo_id: 580428
     name: ''
     nick: prathiksha
+  - &ralkhulaidi
+    bmo_id: 790803
+    name: Rana Al-Khulaidi
+    nick: ralkhulaidi
   - &rbs
     bmo_id: 5630
     name: ''
@@ -3258,26 +3261,26 @@ modules:
     machine_name: core_web_audio
 
   - name: 'Core: Web Painting'
-    description: painting, display lists, and layer construction
+    description: painting and display lists
     includes:
       - layout/painting/**/*
-      # TODO: "the display list and layer related methods on nsIFrame and its subclasses"
+      # TODO: "the display list related methods on nsIFrame and its subclasses"
     meta:
       group: dev-platform
       url: '{doc}`/layout/index`'
       components:
-        - 'Core::Layout: Web Painting'
+        - Core::Web Painting
       owners_emeritus:
         - Matt Woodrow
       peers_emeritus:
         - David Baron
         - Robert O'Callahan
+        - Miko Mynttinen (mikokm)
       review_group: layout-reviewers
     owners:
     peers:
       - *tnikkel
       - *mstange
-      - *mikokm
       - *jnicol
     machine_name: core_web_painting
 
@@ -3929,6 +3932,7 @@ modules:
           - *emcminn
           - *charlie
           - *aminomancer
+          - *ralkhulaidi
         machine_name: normandy
 
       - machine_name: firefox_view
@@ -5077,5 +5081,5 @@ modules:
         - Ryan Tilder
       group: dev-platform
 hashes:
-  config: 23cf4959245d8c94c03e9eecc16e421e26285243
-  export: 630300bb8cc32c5d7e66787a96618b5245c2d5dd
+  config: 2b093bf5501a7647a39a7cea050841049d733a89
+  export: 9bc58b52bffa670dbf61acfe0455d7d8cec862ab

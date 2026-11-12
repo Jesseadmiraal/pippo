@@ -81,6 +81,7 @@
 #include "nsCOMPtr.h"
 #include "nsComboboxControlFrame.h"
 #include "nsCommandParams.h"
+#include "nsComputedDOMStyle.h"
 #include "nsContentAreaDragDrop.h"
 #include "nsContentUtils.h"
 #include "nsCopySupport.h"
@@ -160,7 +161,7 @@ static uint32_t gNonSynthesizedMouseOrKeyboardEventCounter = 0;
 static nsITimer* gUserInteractionTimer = nullptr;
 static nsITimerCallback* gUserInteractionTimerCallback = nullptr;
 
-static const double kCursorLoadingTimeout = 1000;  // ms
+static const int32_t kCursorLoadingTimeout = 1000;  // ms
 constinit static AutoWeakFrame gLastCursorSourceFrame;
 static TimeStamp gLastCursorUpdateTime;
 static TimeStamp gTypingStartTime;
@@ -1835,11 +1836,12 @@ static bool IsAccessKeyTarget(Element* aElement, nsAString& aKey) {
     return false;
   }
 
-  if (!aElement->IsXULElement()) {
+  if (!aElement->IsXULElement() &&
+      !nsContentUtils::IsChromeDoc(aElement->OwnerDoc())) {
     return true;
   }
 
-  // For XUL we do visibility checks.
+  // For XUL and chrome docs we do visibility checks.
   nsIFrame* frame = aElement->GetPrimaryFrame();
   if (!frame) {
     return false;
@@ -1859,9 +1861,10 @@ static bool IsAccessKeyTarget(Element* aElement, nsAString& aKey) {
     return true;
   }
 
-  // XUL label elements are never focusable, so we need to check for them
+  // label elements are never focusable, so we need to check for them
   // explicitly before giving up.
-  if (aElement->IsXULElement(nsGkAtoms::label)) {
+  if (aElement->IsXULElement(nsGkAtoms::label) ||
+      aElement->IsHTMLElement(nsGkAtoms::label)) {
     return true;
   }
 
@@ -4464,7 +4467,11 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
             break;
           }
 
+          AutoWeakFrame weakScrollTarget(scrollTarget);
           ScrollbarsForWheel::SetActiveScrollTarget(scrollTarget);
+          if (scrollTarget && !weakScrollTarget.IsAlive()) {
+            break;
+          }
 
           ScrollContainerFrame* rootScrollContainerFrame =
               !mCurrentTarget

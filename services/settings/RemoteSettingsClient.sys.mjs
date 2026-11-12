@@ -194,9 +194,7 @@ class AttachmentDownloader extends Downloader {
         return this._client.db.saveAttachment(attachmentId, null);
       },
       deleteMultiple: async attachmentIds => {
-        return this._client.db.saveAttachments(
-          attachmentIds.map(id => [id, null])
-        );
+        return this._client.db.deleteAttachments(attachmentIds);
       },
       prune: async excludeIds => {
         return this._client.db.pruneAttachments(excludeIds);
@@ -580,6 +578,11 @@ export class RemoteSettingsClient extends EventEmitter {
       ) {
         // If consumer requested an empty list fallback, no need to raise attention if no data in DB.
         lazy.console.debug(e);
+      } else if (Services.startup.shuttingDown) {
+        lazy.console.debug(
+          `${this.identifier} read interrupted by shutdown`,
+          e
+        );
       } else {
         // Report error, and continue with trying to load the binary dump.
         lazy.console.error(e);
@@ -1364,7 +1367,9 @@ export class RemoteSettingsClient extends EventEmitter {
     return {
       remoteTimestamp,
       metadata,
-      remoteRecords,
+      remoteRecords: this.localFields.length
+        ? remoteRecords.map(r => this._cleanLocalFields(r))
+        : remoteRecords,
       ageSeconds,
     };
   }

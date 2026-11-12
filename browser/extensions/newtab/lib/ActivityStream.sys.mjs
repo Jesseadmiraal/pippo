@@ -57,6 +57,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://newtab/lib/Widgets/RecentSearchesFeed.sys.mjs",
   PictureOfTheDayFeed:
     "resource://newtab/lib/Widgets/PictureOfTheDayFeed.sys.mjs",
+  FramedWidgetsFeed: "resource://newtab/lib/Widgets/FramedWidgetsFeed.sys.mjs",
   StartupCacheInit: "resource://newtab/lib/StartupCacheInit.sys.mjs",
   Store: "resource://newtab/lib/Store.sys.mjs",
   SystemTickFeed: "resource://newtab/lib/SystemTickFeed.sys.mjs",
@@ -64,7 +65,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TimerFeed: "resource://newtab/lib/Widgets/TimerFeed.sys.mjs",
   TravelFeed: "resource://newtab/lib/Widgets/TravelFeed.sys.mjs",
   TopSitesFeed: "resource://newtab/lib/TopSitesFeed.sys.mjs",
-  TopStoriesFeed: "resource://newtab/lib/TopStoriesFeed.sys.mjs",
   WallpaperFeed: "resource://newtab/lib/Wallpapers/WallpaperFeed.sys.mjs",
   WeatherFeed: "resource://newtab/lib/WeatherFeed.sys.mjs",
   WebNotificationsFeed: "resource://newtab/lib/WebNotificationsFeed.sys.mjs",
@@ -733,6 +733,34 @@ export const PREFS_CONFIG = new Map([
     },
   ],
   [
+    "feeds.system.topstories",
+    {
+      title:
+        "System pref that fetches content recommendations from a configurable content provider",
+      // Dynamically determine if stories should be shown for a geo / locale
+      getValue: ({ geo, locale }) => {
+        // If we don't have geo, we don't want to flash the screen with stories while geo loads.
+        // Best to display nothing until geo is ready.
+        if (!geo) {
+          return false;
+        }
+        const blockedRegions =
+          lazy.NimbusFeatures.pocketNewtab.getVariable("regionStoriesBlock") ||
+          "";
+        if (csvHasValue(blockedRegions, geo)) {
+          return false;
+        }
+        if (!locale) {
+          return false;
+        }
+        return (
+          storiesRegionLocaleMatches(geo, locale) ||
+          matchesLegacyRegionStoriesConfig(geo, locale)
+        );
+      },
+    },
+  ],
+  [
     "mobileDownloadModal.enabled",
     {
       title: "Boolean flag to show download Firefox for mobile QR code modal",
@@ -1181,6 +1209,22 @@ export const PREFS_CONFIG = new Map([
     },
   ],
   [
+    "newtabWallpapers.categoryOrder",
+    {
+      title:
+        "Comma-separated wallpaper category order. Unlisted categories follow the listed ones. Overridden by trainhopConfig.wallpapers.categoryOrder",
+      value: "",
+    },
+  ],
+  [
+    "newtabWallpapers.maxCategories",
+    {
+      title:
+        "Maximum number of wallpaper category tiles in the Nova layout, including Your images. Overridden by trainhopConfig.wallpapers.maxCategories",
+      value: 6,
+    },
+  ],
+  [
     "newtabAdSize.leaderboard",
     {
       title: "Boolean flag to turn the leaderboard ad size on and off",
@@ -1199,7 +1243,7 @@ export const PREFS_CONFIG = new Map([
     "newtabAdSize.billboard",
     {
       title: "Boolean flag to turn the billboard ad size on and off",
-      value: false,
+      value: true,
     },
   ],
   [
@@ -1207,7 +1251,7 @@ export const PREFS_CONFIG = new Map([
     {
       title:
         "position for billboard spoc - should correlate to a row in DS grid",
-      value: "3",
+      value: "1",
     },
   ],
   [
@@ -1221,7 +1265,7 @@ export const PREFS_CONFIG = new Map([
     "discoverystream.promoCard.enabled",
     {
       title: "Boolean flag to turn the promo card on and off",
-      value: false,
+      value: true,
     },
   ],
   [
@@ -1367,6 +1411,13 @@ export const PREFS_CONFIG = new Map([
     "discoverystream.reportAds.enabled",
     {
       title: "Boolean flag to enable reporting ads from the context menu",
+      value: false,
+    },
+  ],
+  [
+    "discoverystream.reportAds.newReasons.enabled",
+    {
+      title: "Boolean flag to enable updated reporting reasons for ads",
       value: false,
     },
   ],
@@ -2180,12 +2231,35 @@ export const PREFS_CONFIG = new Map([
     },
   ],
   [
-    "widgets.crossword.endpoint",
+    "widgets.framed.endpoint.prod",
     {
       title:
-        "The Merino endpoint that serves the crossword bundle rendered in the widget iframe",
-      value:
-        "https://prod-games-particle.merino.prod.webservices.mozgcp.net/index.html",
+        "The prod Merino endpoint serving the document URL and enabled state of every framed widget",
+      value: "https://merino.services.mozilla.com/api/v1/widgets/framed",
+    },
+  ],
+  [
+    "widgets.framed.endpoint.stage",
+    {
+      title:
+        "The stage Merino endpoint serving the document URL and enabled state of every framed widget",
+      value: "https://merino.services.allizom.org/api/v1/widgets/framed",
+    },
+  ],
+  [
+    "widgets.framed.allowedHostSuffixes",
+    {
+      title:
+        "Host suffixes (comma-separated) framed widget documents may load from; the frame-src CSP must allow them too",
+      value: ".mozgcp.net,.mozilla.com",
+    },
+  ],
+  [
+    "widgets.framed.environment",
+    {
+      title:
+        "Which framed widgets endpoint framed widgets load from (prod or stage)",
+      value: "prod",
     },
   ],
   [
@@ -2656,34 +2730,6 @@ const FEEDS_DATA = [
     value: false,
   },
   {
-    name: "system.topstories",
-    factory: () =>
-      new lazy.TopStoriesFeed(PREFS_CONFIG.get("discoverystream.config")),
-    title:
-      "System pref that fetches content recommendations from a configurable content provider",
-    // Dynamically determine if stories should be shown for a geo / locale
-    getValue: ({ geo, locale }) => {
-      // If we don't have geo, we don't want to flash the screen with stories while geo loads.
-      // Best to display nothing until geo is ready.
-      if (!geo) {
-        return false;
-      }
-      const blockedRegions =
-        lazy.NimbusFeatures.pocketNewtab.getVariable("regionStoriesBlock") ||
-        "";
-      if (csvHasValue(blockedRegions, geo)) {
-        return false;
-      }
-      if (!locale) {
-        return false;
-      }
-      return (
-        storiesRegionLocaleMatches(geo, locale) ||
-        matchesLegacyRegionStoriesConfig(geo, locale)
-      );
-    },
-  },
-  {
     name: "systemtick",
     factory: () => new lazy.SystemTickFeed(),
     title: "Produces system tick events to periodically check for data expiry",
@@ -2799,6 +2845,12 @@ const FEEDS_DATA = [
     name: "pictureofthedayfeed",
     factory: () => new lazy.PictureOfTheDayFeed(),
     title: "Handles fetching and caching the daily Picture of the day",
+    value: true,
+  },
+  {
+    name: "framedwidgetsfeed",
+    factory: () => new lazy.FramedWidgetsFeed(),
+    title: "Handles fetching and caching the Merino framed widgets manifest",
     value: true,
   },
   {

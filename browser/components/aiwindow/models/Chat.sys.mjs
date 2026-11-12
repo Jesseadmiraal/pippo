@@ -20,6 +20,7 @@ import {
   MANAGE_TABS,
   AITAB_PREF,
   AITAB_TOOLS,
+  INCLUDE_CHAT_TAB_PREF,
   GENERATE_AITAB,
   ADD_MEMORY,
   SEARCH_THE_WEB,
@@ -44,7 +45,8 @@ import { getSmartPageName } from "chrome://browser/content/aiwindow/modules/Trus
  * @param {ChatConversation} conversation - The conversation context
  * @param {BrowsingContext} browsingContext - The browsing context (can be null for some tools)
  * @param {string} mode - The mode of operation (e.g., "fullpage", "sidebar", "urlbar")
- * @returns {Promise<object>} The result of the tool execution
+ * @returns {Promise<object>} The result of the tool execution, or
+ *   `{ toolResult, cardShown }` for manage_tabs
  * @private
  */
 export async function executeToolByName(
@@ -117,7 +119,7 @@ export async function executeToolByName(
       if (uiData) {
         conversation.addUIToolToCurrentMessage(toolCallId, uiData);
       }
-      result = toolResult;
+      result = { toolResult, cardShown: !!uiData };
       break;
     }
     case ADD_MEMORY: {
@@ -295,6 +297,22 @@ function filterFeatureGatedTools(tools, conversation) {
   if (!Services.prefs.getBoolPref(AITAB_PREF, false)) {
     filtered = filtered.filter(t => !AITAB_TOOLS.has(t.function?.name));
   }
+  if (!Services.prefs.getBoolPref(INCLUDE_CHAT_TAB_PREF, false)) {
+    filtered = filtered.map(t => {
+      if (t.function.name !== MANAGE_TABS) {
+        return t;
+      }
+      const properties = { ...t.function.parameters.properties };
+      delete properties.include_chat_tab;
+      return {
+        ...t,
+        function: {
+          ...t.function,
+          parameters: { ...t.function.parameters, properties },
+        },
+      };
+    });
+  }
   return filtered;
 }
 
@@ -307,7 +325,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 ChromeUtils.defineLazyGetter(lazy, "console", () =>
   console.createInstance({
-    prefix: "Conversation",
+    logModule: "Conversation",
     maxLogLevelPref: "browser.smartwindow.conversation.logLevel",
   })
 );
@@ -350,6 +368,17 @@ function recordToolCallEvent({ toolName, mode, conversation, error }) {
     error,
   });
 }
+
+/**
+ * Work performed by a successfully completed chat turn.
+ *
+ * @typedef {object} ChatTurnResult
+ * @property {number | null} outputTokens - Backend completion tokens across chat
+ *   model responses, excluding direct tool answer streams, or null if any chat
+ *   model response omitted usage.
+ * @property {number} toolCallCount - Model-requested tool executions attempted,
+ *   including execution failures but excluding calls rejected before execution.
+ */
 
 /**
  * Chat
@@ -447,6 +476,8 @@ Object.assign(Chat, {
    * @param {Promise<string|null>} [options.tokenPromise] - A token
    *   fetch the caller already started, so a cold or expired token resolves
    *   alongside prompt construction rather than after it. Omit to fetch here.
+   * @returns {Promise<ChatTurnResult | null>} Completed-turn work counts, or null
+   *   if the turn was stopped early or handed off to another surface.
    */
   async fetchWithHistory({
     conversation,
@@ -481,6 +512,8 @@ Object.assign(Chat, {
     const chatToolsConfig = filterFeatureGatedTools(toolsConfig, conversation);
 
     let fullResponseText = "";
+    /** @type {ChatTurnResult} */
+    const turnResult = { outputTokens: 0, toolCallCount: 0 };
 
     // A search handoff sets `_searchExecutedTurn` (in executeToolByName). If a
     // later re-entry on the same turn (openSidebarAndContinue -> fetchWithHistory)
@@ -533,6 +566,11 @@ Object.assign(Chat, {
         );
         fullResponseText = response.fullResponseText;
         pendingToolCalls = response.pendingToolCalls;
+        turnResult.outputTokens =
+          turnResult.outputTokens !== null &&
+          response.usage?.completion_tokens != null
+            ? turnResult.outputTokens + response.usage.completion_tokens
+            : null;
 
         // Debug logging: Record the raw text and requested tool calls from the model
         logConversationStream(currentTurn, "CHAT RECV", {
@@ -563,12 +601,14 @@ Object.assign(Chat, {
           // We only run telemetry on our own endpoints
           runLLMaJTelemetry(conversation);
         }
-        return;
+
+        return signal?.aborted ? null : turnResult;
       }
 
       if (signal?.aborted) {
         logConversationStream(currentTurn, "STREAM END", null, "aborted");
-        return;
+
+        return null;
       }
 
       // Ensure all serialized tool calls have arguments and expand URL tokens.
@@ -691,7 +731,8 @@ Object.assign(Chat, {
         if (signal?.aborted) {
           abortToolCalls();
           logConversationStream(currentTurn, "STREAM END", null, "aborted");
-          return;
+
+          return null;
         }
 
         activeToolCall = null;
@@ -777,6 +818,7 @@ Object.assign(Chat, {
         // try/catch so the conversation can be updated for failed calls.
         let result;
         let aiTabEndsTurn = false;
+        let tabCardShown = false;
         let toolCallError = "";
         // Set when the tool is writing the user-facing reply itself, in which
         // case it is delivered below and the model gets no follow-up turn.
@@ -807,6 +849,8 @@ Object.assign(Chat, {
             args: toolUIArgs,
           });
         }
+
+        turnResult.toolCallCount++;
 
         try {
           if (featureGatedHandler) {
@@ -840,6 +884,10 @@ Object.assign(Chat, {
             }
           } else {
             result = await dispatchTool(toolName);
+            if (toolName === MANAGE_TABS) {
+              tabCardShown = result.cardShown;
+              result = result.toolResult;
+            }
           }
 
           // Debug logging: Record the data returned by the tool before feeding it to the model
@@ -916,11 +964,12 @@ Object.assign(Chat, {
         if (signal?.aborted && !isSearchHandoff) {
           abortToolCalls();
           logConversationStream(currentTurn, "STREAM END", null, "aborted");
-          return;
+
+          return null;
         }
 
         const endsTurn =
-          toolName === MANAGE_TABS ||
+          tabCardShown ||
           aiTabEndsTurn ||
           directAnswerStream ||
           isSearchHandoff;
@@ -937,13 +986,14 @@ Object.assign(Chat, {
           .catch(() => {});
 
         // These successful tools finish their turns in the UI.
-        if (toolName === MANAGE_TABS || aiTabEndsTurn) {
+        if (tabCardShown || aiTabEndsTurn) {
           // These tool calls need to return early so any staged
           // security flags that have accumulated up to this point
           // need to be committed before returning since the commit
           // at the end of the loop will not be reached.
           conversation.securityProperties.commit();
-          return;
+
+          return signal?.aborted ? null : turnResult;
         }
 
         // Also terminal: the tool is writing the reply itself (the answers path
@@ -954,7 +1004,8 @@ Object.assign(Chat, {
         if (directAnswerStream) {
           await conversation.receiveResponse(directAnswerStream);
           logConversationStream(currentTurn, "STREAM END", null, toolName);
-          return;
+
+          return signal?.aborted ? null : turnResult;
         }
 
         // Perform the search handoff if the RUN_SEARCH tool was run.
@@ -964,16 +1015,19 @@ Object.assign(Chat, {
             console.error(
               "search_the_web: Associated window not available or closed, aborting search handoff"
             );
-            return;
+
+            return null;
           }
 
           lazy.AIWindow.openSidebarAndContinue(win, conversation);
-          return;
+
+          return null;
         }
       }
       if (signal?.aborted) {
         logConversationStream(currentTurn, "STREAM END", null, "aborted");
-        return;
+
+        return null;
       }
     }
   },

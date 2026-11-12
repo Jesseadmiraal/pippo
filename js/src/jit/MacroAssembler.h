@@ -594,6 +594,17 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
  public:
   // ===============================================================
+  // Indirect call/jump targets.
+
+  // Emit an indirect call or jump target of the specified kind. These ops may
+  // emit additional instructions before/after the actual target location. The
+  // returned CodeOffset and bound label identify the first instruction executed
+  // at the target.
+  inline CodeOffset indirectTarget(TargetKind kind);
+  inline void bindIndirectTarget(Label* label, TargetKind kind);
+  inline void bindIndirectTarget(CodeLabel* label, TargetKind kind);
+
+  // ===============================================================
   // Simple call functions.
 
   // The returned CodeOffset is the assembler offset for the instruction
@@ -659,6 +670,11 @@ class MacroAssembler : public MacroAssemblerSpecific {
   static void patchNopToCall(uint8_t* callsite,
                              uint8_t* target) PER_SHARED_ARCH;
   static void patchCallToNop(uint8_t* callsite) PER_SHARED_ARCH;
+
+  // Emit nops until at least PatchWrite_NearCallSize() bytes follow |offset|,
+  // so that a near call patched in at |offset| doesn't overwrite the code
+  // emitted next.
+  void ensureNearCallPatchSpace(uint32_t offset);
 
   // These methods are like movWithPatch/PatchDataWithValueCheck but allow
   // using pc-relative addressing on certain platforms (RIP-relative LEA on x64,
@@ -1056,7 +1072,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
   // ===============================================================
   // Copy instructions
 
-  inline void copy64(const Address& src, const Address& dest, Register scratch);
+  template <typename T>
+  inline void copy64(const T& src, const T& dest, Register scratch);
 
  public:
   // ===============================================================
@@ -2343,9 +2360,12 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
   // ========================================================================
   // Canonicalization primitives.
+#ifndef JS_CODEGEN_RISCV64
+  // On riscv64, these are defined in MacroAssemblerRiscv64Compat.
   inline void canonicalizeDoubleNaN(FloatRegister reg);
 
   inline void canonicalizeFloatNaN(FloatRegister reg);
+#endif
 
   // If denormal support is disabled, there are 2^53 ways to represent zero.
   // This function canonicalizes the representation to either -0.0 or +0.0,
